@@ -1,5 +1,5 @@
 import uvicorn
-from fastapi import FastAPI, Request, Response, status
+from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 import os
@@ -8,12 +8,6 @@ import logging
 
 from config.connectDB import connect_DB, disconnect_DB 
 from routes import userRoute
-
-from controllers.userController import register_user_controller
-from models.userModel import User
-
-from schemas import userschema
-
 
 logging.basicConfig(level=logging.INFO)
 PORT = int(os.getenv("PORT", 8000))
@@ -58,7 +52,7 @@ async def helmet_headers(request: Request, call_next):
 
 
 
-# app.include_router(userRoute, prefix="/api/v1", tags=["Users"])
+
 
 
 
@@ -66,10 +60,12 @@ async def helmet_headers(request: Request, call_next):
 async def root():
     return {"message":"Server is running 🚀"}
 
-@app.post("/regi",response_class=userschema.RegisterUser)
-async def create(request: Request, data: User):
-    result = await register_user_controller(request, data)
-    return result
+
+app.include_router(userRoute.router, prefix="/api/v1", tags=["User"])
+
+
+
+
 
 
 

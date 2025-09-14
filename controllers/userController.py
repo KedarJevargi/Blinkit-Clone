@@ -1,6 +1,6 @@
+from urllib import response
 from fastapi import HTTPException, Request, status
 from fastapi.responses import JSONResponse
-from models.userModel import User
 import os
 import bcrypt
 from datetime import datetime
@@ -9,6 +9,10 @@ from dotenv import load_dotenv
 
 from config import sendEmail
 from utils import verifyEmailTemplate
+from models.userModel import User
+from schemas import userschema
+
+from utils import generateAccessToken,generateRefreshToken
 
 load_dotenv()
 FRONTEND_URL = os.getenv("FRONTEND_URL")
@@ -65,10 +69,11 @@ async def register_user_controller(request: Request, user_data: User):
             html=verifyEmailTemplate.create_email_template(user_data.name, verify_email_url)
         )
 
-
-
         # Serialize the new user document (handles ObjectId and datetime)
         serialized_user = serialize_mongo_doc(new_user)
+
+        if "password" in serialized_user:
+            del serialized_user["password"]
 
         return JSONResponse(
             content={
@@ -91,19 +96,106 @@ async def register_user_controller(request: Request, user_data: User):
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
 
-# Optional: Alternative approach using custom JSON encoder
-# import json
+async def login_user_controller(request: Request, user_data: userschema.LoginUser):
+    """
+    Controller to authenticate user login
+    """
+    try:
+        # Find user by email
+        existing_user = await request.app.db_users.find_one({"email": user_data.email})
 
-# class MongoJSONEncoder(json.JSONEncoder):
-#     """Custom JSON encoder for MongoDB documents"""
-#     def default(self, obj):
-#         if isinstance(obj, ObjectId):
-#             return str(obj)
-#         elif isinstance(obj, datetime):
-#             return obj.isoformat()
-#         return super().default(obj)
+        if not existing_user:
+            return JSONResponse(
+                content={
+                    "message": "Invalid email or password",
+                    "error": True,
+                    "success": False
+                },
+                status_code=status.HTTP_401_UNAUTHORIZED
+            )
+        
+        # Check if user account is active
+        if existing_user.get("status") != "Active":
+            return JSONResponse(
+                content={
+                    "message": "Account is not verified. Please check your email to verify your account.",
+                    "error": True,
+                    "success": False
+                },
+                status_code=status.HTTP_403_FORBIDDEN
+            )
 
-# # Alternative function using the custom encoder
-# def serialize_with_encoder(doc):
-#     """Alternative serialization using custom JSON encoder"""
-#     return json.loads(json.dumps(doc, cls=MongoJSONEncoder, default=str))
+        # Verify password
+        is_password_valid = bcrypt.checkpw(
+            user_data.password.encode("utf-8"),
+            existing_user["password"].encode("utf-8")
+        )
+
+        if not is_password_valid:
+            return JSONResponse(
+                content={
+                    "message": "Invalid email or password",
+                    "error": True,
+                    "success": False
+                },
+                status_code=status.HTTP_401_UNAUTHORIZED
+            )
+        
+        # Convert ObjectId to string before passing to token functions
+        user_id_str = str(existing_user["_id"])
+        
+        # Generate tokens (make sure user_id is string)
+        access_token = await generateAccessToken.generate_access_token(user_id_str)
+        refresh_token = await generateRefreshToken.generate_refresh_token(request, user_id_str)
+
+        # Remove password from response data BEFORE serialization
+        user_response = serialize_mongo_doc(existing_user)
+        if "password" in user_response:
+            del user_response["password"]
+
+        # Cookie options
+        cookies_option = {
+            "httponly": True,
+            "secure": True,
+            "samesite": "none"
+        }
+        
+        # Create JSONResponse first
+        response = JSONResponse(
+            content={
+                "message": "Login successful",
+                "error": False,
+                "success": True,
+                "data": user_response,
+                "refreshtoken": refresh_token,
+                "accesstoken": access_token
+            },
+            status_code=status.HTTP_200_OK
+        )
+        
+        # Set cookies on the response object
+        response.set_cookie(
+            key="accessToken",
+            value=access_token,
+            **cookies_option
+        )
+        
+        response.set_cookie(
+            key="refreshToken",
+            value=refresh_token,
+            **cookies_option
+        )
+
+        return response
+
+    except Exception as e:
+        # Catch any unexpected errors
+        return JSONResponse(
+            content={
+                "Origin":"Login controller error",
+                "message": f"An error occurred: {str(e)}",
+                "error": True,
+                "success": False
+            },
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
