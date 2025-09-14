@@ -1,5 +1,4 @@
-from urllib import response
-from fastapi import HTTPException, Request, status
+from fastapi import Request, status, Response
 from fastapi.responses import JSONResponse
 import os
 import bcrypt
@@ -13,6 +12,7 @@ from models.userModel import User
 from schemas import userschema
 
 from utils import generateAccessToken,generateRefreshToken
+from bson.objectid import ObjectId
 
 load_dotenv()
 FRONTEND_URL = os.getenv("FRONTEND_URL")
@@ -168,7 +168,7 @@ async def login_user_controller(request: Request, user_data: userschema.LoginUse
                 "success": True,
                 "data": user_response,
                 "refreshtoken": refresh_token,
-                "accesstoken": access_token
+                "accesstoken": access_token,
             },
             status_code=status.HTTP_200_OK
         )
@@ -195,6 +195,42 @@ async def login_user_controller(request: Request, user_data: userschema.LoginUse
                 "Origin":"Login controller error",
                 "message": f"An error occurred: {str(e)}",
                 "error": True,
+                "success": False
+            },
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+    
+
+async def logout_user_controller(response: Response, request: Request, user_id: str):
+    """
+    Handles user logout. This function is called by the router.
+    It modifies the response object to clear cookies and updates the database.
+    """
+    try:
+        cookies_option = {
+            "httponly": True,
+            "secure": True,      # Should be True in production
+            "samesite": "none",  # Adjust based on your frontend domain
+            "path": "/"
+        }
+
+        # Add cookie deletion instructions to the response object
+        response.delete_cookie("accessToken", **cookies_option)
+        response.delete_cookie("refreshToken", **cookies_option)
+
+        # Invalidate the refresh token in the database
+        await request.app.db_users.update_one(
+            {"_id": ObjectId(user_id)},
+            {"$set": {"refresh_token": None}} # Set to null to invalidate
+        )
+
+    except Exception as e:
+        # If an error occurs, we create a new error response
+        # Note: This is one of the few places creating a new JSONResponse is correct
+        raise JSONResponse(
+            content={
+                "origin": "Logout controller error",
+                "message": f"An unexpected error occurred: {str(e)}",
                 "success": False
             },
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
