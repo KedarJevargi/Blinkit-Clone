@@ -9,9 +9,10 @@ import logging
 from config.connectDB import connect_DB, disconnect_DB 
 from routes import userRoute
 
-from controllers.userController import check_or_create_user
+from controllers.userController import register_user_controller
 from models.userModel import User
 
+from schemas import userschema
 
 
 logging.basicConfig(level=logging.INFO)
@@ -65,9 +66,9 @@ async def helmet_headers(request: Request, call_next):
 async def root():
     return {"message":"Server is running 🚀"}
 
-@app.post("/regi")
+@app.post("/regi",response_class=userschema.RegisterUser)
 async def create(request: Request, data: User):
-    result = await check_or_create_user(request, data)
+    result = await register_user_controller(request, data)
     return result
 
 
@@ -75,5 +76,5 @@ async def create(request: Request, data: User):
 if __name__ == "__main__":
     uvicorn.run("main:app", host="0.0.0.0", port=PORT, reload=True)
 
-    
+
 
