@@ -41,15 +41,20 @@ async def upload_avatar(
     user_id: str = Depends(authmiddleware.auth)
    
 ):
-    """
-    Upload user avatar image.
-    The form-data key for the file MUST be 'avatar'.
-    
-    Headers:
-    - Authorization: Bearer <jwt_token>
-    """
-    # We pass the validated UploadFile object directly to the controller
     result = await userController.upload_avatar_controller(avatar_file=avatar, user_id=user_id, request= request)
     return result
 
 
+@router.put("/update-user", status_code=status.HTTP_200_OK)
+async def update_user(
+    request: Request,
+    user_data: userschema.UpdateUser,
+    user_id: str = Depends(authmiddleware.auth)
+     # Correct: This is a type hint
+):
+    result = await userController.update_user_details_controller(
+        request=request,
+        user_data=user_data, 
+        user_id=user_id
+    )
+    return result

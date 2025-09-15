@@ -1,5 +1,5 @@
 from pydantic import BaseModel,EmailStr,Field
-from typing import Annotated
+from typing import Annotated,Optional
 
 class LoginUser(BaseModel):
     email: Annotated[EmailStr,Field(...,description="user email")]
@@ -8,6 +8,18 @@ class LoginUser(BaseModel):
 
 
     
+
+
+class UpdateUser(BaseModel):
+    name: Optional[str] = None
+    email: Optional[EmailStr] = None
+    mobile: Optional[str] = Field(
+        default=None, min_length=10, max_length=10, pattern=r'^[0-9]+$'
+    )
+    password: Optional[str] = Field(default=None, min_length=6)
+
+
+
 
 
 

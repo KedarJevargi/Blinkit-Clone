@@ -296,3 +296,47 @@ async def upload_avatar_controller(avatar_file: UploadFile, user_id: str, reques
             content={"message": f"An unexpected error occurred: {str(e)}"},
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
+
+
+async def update_user_details_controller(request: Request,user_data: userschema.UpdateUser,user_id: str):
+    try:
+        # Use model_dump() instead of the deprecated dict()
+        update_fields = user_data.model_dump(exclude_unset=True)
+
+        if not update_fields:
+            return JSONResponse(
+                content={"message": "No update data provided."},
+                status_code=status.HTTP_400_BAD_REQUEST
+            )
+
+        if "password" in update_fields and update_fields["password"]:
+            salt = bcrypt.gensalt(12)
+            hashed_password = bcrypt.hashpw(
+                update_fields["password"].encode("utf-8"), salt
+            ).decode("utf-8")
+            update_fields["password"] = hashed_password
+
+        update_result = await request.app.db_users.update_one(
+            {"_id": ObjectId(user_id)},
+            {"$set": update_fields}
+        )
+
+        if update_result.matched_count == 0:
+            return JSONResponse(
+                content={"message": "User not found."},
+                status_code=status.HTTP_404_NOT_FOUND
+            )
+
+        return JSONResponse(
+            content={
+                "message": "User details updated successfully.",
+                "updated_fields": list(update_fields.keys())
+            },
+            status_code=status.HTTP_200_OK
+        )
+
+    except Exception as e:
+        return JSONResponse(
+            content={"message": f"An unexpected error occurred: {str(e)}"},
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
