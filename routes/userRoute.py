@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends,Request,Response,status
+from fastapi import APIRouter, Depends, File,Request,Response, UploadFile,status
 from controllers import userController
 from models import userModel
 from schemas import userschema
@@ -31,4 +31,25 @@ async def logout_user(
     # This call now correctly matches the controller's definition
     result = await userController.logout_user_controller(response, request, user_id)
     return result
+
+
+@router.put("/upload-avatar", status_code=status.HTTP_200_OK)
+async def upload_avatar(
+    
+    request: Request,
+    avatar: UploadFile = File(..., description="The user's avatar image file (e.g., jpg, png)"),
+    user_id: str = Depends(authmiddleware.auth)
+   
+):
+    """
+    Upload user avatar image.
+    The form-data key for the file MUST be 'avatar'.
+    
+    Headers:
+    - Authorization: Bearer <jwt_token>
+    """
+    # We pass the validated UploadFile object directly to the controller
+    result = await userController.upload_avatar_controller(avatar_file=avatar, user_id=user_id, request= request)
+    return result
+
 

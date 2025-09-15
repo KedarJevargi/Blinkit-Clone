@@ -1,4 +1,4 @@
-from fastapi import Request, status, Response
+from fastapi import File, Request, UploadFile, status, Response
 from fastapi.responses import JSONResponse
 import os
 import bcrypt
@@ -13,6 +13,8 @@ from schemas import userschema
 
 from utils import generateAccessToken,generateRefreshToken
 from bson.objectid import ObjectId
+
+from utils.uploadImageCloudinary import upload_image_cloudinary
 
 load_dotenv()
 FRONTEND_URL = os.getenv("FRONTEND_URL")
@@ -200,7 +202,6 @@ async def login_user_controller(request: Request, user_data: userschema.LoginUse
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
     
-
 async def logout_user_controller(response: Response, request: Request, user_id: str):
     """
     Handles user logout. This function is called by the router.
@@ -233,5 +234,65 @@ async def logout_user_controller(response: Response, request: Request, user_id: 
                 "message": f"An unexpected error occurred: {str(e)}",
                 "success": False
             },
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+    
+
+async def upload_avatar_controller(avatar_file: UploadFile, user_id: str, request: Request): # Assuming you pass your DB instance `request.app.db_users`
+    """
+    Controller to upload user avatar to Cloudinary and update user profile.
+    Receives the UploadFile object directly.
+    """
+    try:
+        # Validate file type
+        if not avatar_file.content_type.startswith("image/"):
+            return JSONResponse(
+                content={"message": "File must be an image"},
+                status_code=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Optional: Check file size (5MB limit)
+        # Note: Reading the file consumes it. We must seek(0) to reset the pointer.
+        file_content = await avatar_file.read()
+        if len(file_content) > 5 * 1024 * 1024:  # 5 MB
+            return JSONResponse(
+                content={"message": "File size exceeds the 5MB limit"},
+                status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE
+            )
+        await avatar_file.seek(0) # IMPORTANT: Reset file pointer for the upload function
+
+        # Upload image to Cloudinary
+        upload_result = await upload_image_cloudinary(avatar_file)
+        avatar_url = upload_result.get("secure_url")
+        
+        if not avatar_url:
+            return JSONResponse(
+                content={"message": "Failed to upload image"},
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+        # Update user avatar in database (assuming 'db' is your Motor client instance)
+        update_result = await request.app.db_users.update_one(
+            {"_id": ObjectId(user_id)},
+            {"$set": {"avatar": avatar_url}}
+        )
+        
+        if update_result.matched_count == 0:
+            return JSONResponse(
+                content={"message": "User not found"},
+                status_code=status.HTTP_404_NOT_FOUND
+            )
+
+        return JSONResponse(
+            content={
+                "message": "Avatar uploaded successfully",
+                "data": {"avatar": avatar_url}
+            },
+            status_code=status.HTTP_200_OK
+        )
+
+    except Exception as e:
+        return JSONResponse(
+            content={"message": f"An unexpected error occurred: {str(e)}"},
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
         )

@@ -61,6 +61,8 @@ async def root():
     return {"message":"Server is running 🚀"}
 
 
+
+
 app.include_router(userRoute.router, prefix="/api/v1", tags=["User"])
 
 
