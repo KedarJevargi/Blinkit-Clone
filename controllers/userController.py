@@ -2,12 +2,14 @@ from fastapi import File, Request, UploadFile, status, Response
 from fastapi.responses import JSONResponse
 import os
 import bcrypt
-from datetime import datetime
+from datetime import datetime, timedelta
 from bson import ObjectId
 from dotenv import load_dotenv
 
 from config import sendEmail
 from utils import verifyEmailTemplate
+from utils import forgotPasswordTemplate
+from utils import generateForgotPasswordOTP
 from models.userModel import User
 from schemas import userschema
 
@@ -292,8 +294,13 @@ async def upload_avatar_controller(avatar_file: UploadFile, user_id: str, reques
         )
 
     except Exception as e:
+        # Catch any unexpected errors
         return JSONResponse(
-            content={"message": f"An unexpected error occurred: {str(e)}"},
+            content={
+                "message": f"An error occurred: {str(e)}",
+                "error": True,
+                "success": False
+            },
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
 
@@ -340,3 +347,53 @@ async def update_user_details_controller(request: Request,user_data: userschema.
             content={"message": f"An unexpected error occurred: {str(e)}"},
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
+    
+
+async def forgot_password_controller(request: Request, user_data: userschema.ForgotPassword):
+    try:
+        existing_user = await request.app.db_users.find_one({"email": user_data.email})
+
+        # Security: Always return the same message to prevent attackers
+        # from guessing which emails are registered in your system.
+        if existing_user:
+            otp = generateForgotPasswordOTP.generate_otp() # Assuming this is in a utils file
+            expire_time = datetime.now() + timedelta(hours=1)
+
+            # 1. CORRECTED DATABASE QUERY
+            await request.app.db_users.update_one(
+                {"_id": existing_user["_id"]}, # Use the user's unique _id to update
+                {"$set": {
+                    "forgot_password_otp": str(otp),
+                    "forgot_password_expiry": expire_time
+                }} # Combine all fields into a single $set
+            )
+
+            # 2. CORRECTED NAME and AWAITED send_mail
+            await sendEmail.send_mail(
+                receiver_mail=user_data.email,
+                subject="Reset Your Blinkit Password",
+                # Get the name from the user found in the database
+                html=forgotPasswordTemplate.create_forgot_password_template(existing_user["name"], str(otp))
+            )
+        
+        # 3. IMPROVED SECURITY RESPONSE
+        return JSONResponse(
+            content={
+                "message": "If an account with that email exists, a password reset link has been sent.",
+                "error":False,
+                "success": True
+            },
+            status_code=status.HTTP_200_OK
+        )
+    except Exception as e:
+        # Catch any unexpected errors
+        return JSONResponse(
+            content={
+                "message": f"An error occurred: {str(e)}",
+                "error": True,
+                "success": False
+            },
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+    

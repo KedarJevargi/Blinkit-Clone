@@ -58,3 +58,15 @@ async def update_user(
         user_id=user_id
     )
     return result
+
+
+@router.post("/forgot-password", status_code=status.HTTP_200_OK)
+async def forgot_password(
+    request: Request,
+    user_data: userschema.ForgotPassword 
+):
+    result = await userController.forgot_password_controller(
+        request=request,
+        user_data=user_data
+    )
+    return result

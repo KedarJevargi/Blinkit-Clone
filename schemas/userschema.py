@@ -19,6 +19,12 @@ class UpdateUser(BaseModel):
     password: Optional[str] = Field(default=None, min_length=6)
 
 
+class ForgotPassword(BaseModel):
+    email: Annotated[EmailStr,Field(...,description="user email")]
+
+
+
+
 
 
 
