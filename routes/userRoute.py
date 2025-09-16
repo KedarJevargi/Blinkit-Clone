@@ -70,3 +70,21 @@ async def forgot_password(
         user_data=user_data
     )
     return result
+
+
+@router.post("/verify-forgot-password-otp", status_code=status.HTTP_200_OK)
+async def verify_otp_endpoint(
+    request: Request,
+    user_data: userschema.VerifyForgotPasswordOtp
+):
+    result = await userController.verify_forgot_password_otp_controller(request, user_data)
+    return result
+
+
+@router.post("/reset-password", status_code=status.HTTP_200_OK)
+async def reset_password_endpoint(
+    request: Request,
+    user_data: userschema.ResetPassword
+):
+    result = await userController.reset_password_controller(request, user_data)
+    return result

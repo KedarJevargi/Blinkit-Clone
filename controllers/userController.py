@@ -2,7 +2,7 @@ from fastapi import File, Request, UploadFile, status, Response
 from fastapi.responses import JSONResponse
 import os
 import bcrypt
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from bson import ObjectId
 from dotenv import load_dotenv
 
@@ -397,3 +397,104 @@ async def forgot_password_controller(request: Request, user_data: userschema.For
         )
 
     
+
+
+async def verify_forgot_password_otp_controller(
+    request: Request,
+    user_data: userschema.VerifyForgotPasswordOtp
+):
+    try:
+        # Access the database collection via the request object
+        user = await request.app.db_users.find_one({"email": user_data.email})
+
+        if not user:
+            return JSONResponse(
+                content={"message": "User with this email not found."},
+                status_code=status.HTTP_404_NOT_FOUND
+            )
+
+        if not user.get("forgot_password_otp") or not user.get("forgot_password_expiry"):
+             return JSONResponse(
+                content={"message": "No active password reset request found for this user."},
+                status_code=status.HTTP_400_BAD_REQUEST
+            )
+
+        current_time = datetime.now(timezone.utc)
+        if user["forgot_password_expiry"].replace(tzinfo=timezone.utc) < current_time:
+            return JSONResponse(
+                content={"message": "OTP has expired. Please request a new one."},
+                status_code=status.HTTP_400_BAD_REQUEST
+            )
+
+        if user_data.otp != user["forgot_password_otp"]:
+            return JSONResponse(
+                content={"message": "Invalid OTP provided."},
+                status_code=status.HTTP_400_BAD_REQUEST
+            )
+
+        # OTP is valid, clear it from the database
+        await request.app.db_users.update_one(
+            {"_id": user["_id"]},
+            {"$set": {
+                "forgot_password_otp": None,
+                "forgot_password_expiry": None
+            }}
+        )
+
+        return JSONResponse(
+            content={"message": "OTP verified successfully."},
+            status_code=status.HTTP_200_OK
+        )
+
+    except Exception as e:
+        # Catch any unexpected errors
+        return JSONResponse(
+            content={
+                "message": f"An error occurred: {str(e)}",
+                "error": True,
+                "success": False
+            },
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+    
+
+
+
+async def reset_password_controller(request: Request, user_data: userschema.ResetPassword):
+    try:
+        # Find the user by email
+        user = await request.app.db_users.find_one({"email": user_data.email})
+
+        if not user:
+            return JSONResponse(
+                content={"message": "User with this email not found."},
+                status_code=status.HTTP_404_NOT_FOUND
+            )
+
+        # Hash the new password
+        salt = bcrypt.gensalt()
+        hashed_password = bcrypt.hashpw(user_data.new_password.encode("utf-8"), salt).decode("utf-8")
+
+        # Update the user's document with the new hashed password
+        await request.app.db_users.update_one(
+            {"_id": user["_id"]},
+            {"$set": {"password": hashed_password}}
+        )
+
+        return JSONResponse(
+            content={"message": "Password has been reset successfully.",
+                     "error":False,
+                     "success":True},
+            status_code=status.HTTP_200_OK
+        )
+
+    except Exception as e:
+        # Catch any unexpected errors
+        return JSONResponse(
+            content={
+                "message": f"An error occurred: {str(e)}",
+                "error": True,
+                "success": False
+            },
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
