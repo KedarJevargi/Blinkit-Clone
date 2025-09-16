@@ -88,3 +88,13 @@ async def reset_password_endpoint(
 ):
     result = await userController.reset_password_controller(request, user_data)
     return result
+
+
+
+@router.post("/refresh-token", status_code=status.HTTP_200_OK)
+async def refresh_token_endpoint(request: Request, response: Response):
+    """
+    Refreshes the access token using a valid refresh token.
+    """
+    # The controller returns a JSONResponse, so we can return it directly
+    return await userController.refresh_token_controller(request)

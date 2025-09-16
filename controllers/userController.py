@@ -5,6 +5,7 @@ import bcrypt
 from datetime import datetime, timedelta, timezone
 from bson import ObjectId
 from dotenv import load_dotenv
+import jwt
 
 from config import sendEmail
 from utils import verifyEmailTemplate
@@ -15,6 +16,7 @@ from schemas import userschema
 
 from utils import generateAccessToken,generateRefreshToken
 from bson.objectid import ObjectId
+from jwt import PyJWTError, ExpiredSignatureError
 
 from utils.uploadImageCloudinary import upload_image_cloudinary
 
@@ -496,5 +498,73 @@ async def reset_password_controller(request: Request, user_data: userschema.Rese
                 "error": True,
                 "success": False
             },
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+    
+
+async def refresh_token_controller(request: Request):
+    """
+    Verifies a refresh token, rotates it, and issues a new access token,
+    correctly setting the cookies on the final response.
+    """
+    try:
+        # 1. Extract the refresh token
+        refresh_token = request.cookies.get("refreshToken")
+        if not refresh_token:
+            auth_header = request.headers.get("authorization")
+            if not auth_header or not auth_header.startswith("Bearer "):
+                return JSONResponse(
+                    content={"message": "Refresh token not found"},
+                    status_code=status.HTTP_401_UNAUTHORIZED
+                )
+            refresh_token = auth_header.split(" ")[1]
+
+        # 2. Decode and verify the token
+        payload = jwt.decode(refresh_token, os.getenv("SECRET_KEY_REFRESH_TOKEN"), algorithms=["HS256"])
+        user_id = payload.get("id")
+        if not user_id:
+            return JSONResponse(
+                content={"message": "Invalid token payload"},
+                status_code=status.HTTP_401_UNAUTHORIZED
+            )
+
+        # 3. Security Check: Verify token against the database
+        user = await request.app.db_users.find_one({"_id": ObjectId(user_id)})
+        if not user or user.get("refresh_token") != refresh_token:
+            return JSONResponse(
+                content={"message": "Invalid refresh token or session revoked"},
+                status_code=status.HTTP_401_UNAUTHORIZED
+            )
+
+        # 4. Generate a new access token and a new refresh token (Rotation)
+        new_access_token = await generateAccessToken.generate_access_token(user_id)
+        new_refresh_token = await generateRefreshToken.generate_refresh_token(request, user_id)
+
+        # 5. Create the JSON response object FIRST
+        response = JSONResponse(
+            content={
+                "message": "Tokens refreshed successfully",
+                "success": True,
+                "accessToken": new_access_token
+            },
+            status_code=status.HTTP_200_OK
+        )
+
+        # 6. Set both new tokens as cookies on THAT response object
+        cookies_option = {"httponly": True, "secure": True, "samesite": "none"}
+        response.set_cookie(key="accessToken", value=new_access_token, **cookies_option)
+        response.set_cookie(key="refreshToken", value=new_refresh_token, **cookies_option)
+
+        # 7. Return the final, modified response
+        return response
+
+    except ExpiredSignatureError:
+        return JSONResponse(
+            content={"message": "Refresh token has expired. Please log in again."},
+            status_code=status.HTTP_401_UNAUTHORIZED
+        )
+    except (PyJWTError, Exception) as e:
+        return JSONResponse(
+            content={"message": f"An error occurred: {str(e)}"},
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
