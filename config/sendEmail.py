@@ -27,17 +27,3 @@ async def send_mail(receiver_mail: str, subject: str, html: str):
         return {"error": True, "message": str(e)}
 
 
-
-# import resend
-
-# resend.api_key = "re_xxxxxxxxx"
-
-# params: resend.Emails.SendParams = {
-#   "from": "Acme <onboarding@resend.dev>",
-#   "to": ["delivered@resend.dev"],
-#   "subject": "hello world",
-#   "html": "<p>it works!</p>"
-# }
-
-# email = resend.Emails.send(params)
-# print(email)

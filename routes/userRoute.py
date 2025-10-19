@@ -7,8 +7,8 @@ from middleware import authmiddleware
 
 
 router = APIRouter(
-    prefix="/user",
-    tags=["User"]
+    prefix="/users",
+    tags=["Users"]
 )
 
 @router.post("/register", status_code=201)
